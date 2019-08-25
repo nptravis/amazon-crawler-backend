@@ -2,7 +2,13 @@ import puppeteer from "puppeteer";
 import { Product } from "../resources/products/product.model";
 import { connect } from "./db";
 
-const searchTerms = ["coffee grinders"];
+const searchTerms = [
+	"coffee grinders",
+	"running shoes",
+	"baseball caps",
+	"guitar pedals",
+	"frying pans"
+];
 
 export const scrapeIt = async () => {
 	try {
@@ -17,6 +23,7 @@ export const scrapeIt = async () => {
 		console.log("Main Amazon page loaded...");
 
 		await page.focus("#twotabsearchtextbox");
+		const randomIndex = Math.round(Math.random() * 100) % searchTerms.length;
 		await page.keyboard.type(searchTerms[0]);
 		await page.click(".nav-input");
 		await page.waitForNavigation({ waitUntil: "load" });
@@ -50,65 +57,60 @@ export const scrapeIt = async () => {
 
 		productUrls = productUrls.flat();
 		console.log("Number of urls scraped: ", productUrls.length);
+
 		let results = [];
 
 		async function getProductDetails(url) {
-			try {
-				await page.goto(url, {
-					timeout: 60000,
-					waitUntil: "networkidle2"
-				});
+			await page.goto(url, {
+				timeout: 60000,
+				waitUntil: "networkidle2"
+			});
 
-				const titleElement = await page.$("#productTitle");
-				const priceElement = await page.$("#priceblock_ourprice");
-				const reviewElement = await page.$("#acrCustomerReviewText");
-				const averageElement = await page.$("#acrPopover");
-				const detailsElement = await page.$(
-					"#productDetails_detailBullets_sections1"
-				);
+			const titleElement = await page.$("#productTitle");
+			const priceElement = await page.$("#priceblock_ourprice");
+			const reviewElement = await page.$("#acrCustomerReviewText");
+			const averageElement = await page.$("#acrPopover");
+			const detailsElement = await page.$(
+				"#productDetails_detailBullets_sections1"
+			);
 
-				if (
-					!titleElement ||
-					!priceElement ||
-					!reviewElement ||
-					!averageElement ||
-					!detailsElement
-				) {
-					return {};
-				}
-				const title = await page.$eval("#productTitle", el => el.textContent);
-				console.log("Gathering information for", title.trim());
-				const price = await page.$eval(
-					"#priceblock_ourprice",
-					el => el.textContent
-				);
-				const numberOfReviews = await page.$eval(
-					"#acrCustomerReviewText",
-					el => el.textContent
-				);
-				const averageRating = await page.$eval(
-					"#acrPopover",
-					el => el.textContent
-				);
-				const dateFirstListed = await page.$eval(
-					"#productDetails_detailBullets_sections1 tbody",
-					el => el.children[el.children.length - 1].children[1].textContent
-				);
-
-				return {
-					title: title.trim(),
-					price: Number(price.match(/\d+[.]\d+/g)[0]),
-					numberOfReviews: Number(numberOfReviews.match(/\d+/g)[0]),
-					averageRating: Number(averageRating.split(" ")[0]),
-					dateFirstListed: dateFirstListed.trim()
-				};
-			} catch (err) {
-				console.error("THAT IS AN ERROR: ", err.toString());
-				debugger;
-				page.close();
-				browser.close();
-				return err.toString();
+			if (
+				!titleElement ||
+				!priceElement ||
+				!reviewElement ||
+				!averageElement ||
+				!detailsElement
+			) {
+				console.log("Missing data for this url: ", url);
+				return {};
 			}
+
+			const title = await page.$eval("#productTitle", el => el.textContent);
+			console.log("Gathering information for", title.trim());
+			const price = await page.$eval(
+				"#priceblock_ourprice",
+				el => el.textContent
+			);
+			const numberOfReviews = await page.$eval(
+				"#acrCustomerReviewText",
+				el => el.textContent
+			);
+			const averageRating = await page.$eval(
+				"#acrPopover",
+				el => el.textContent
+			);
+			const dateFirstListed = await page.$eval(
+				"#productDetails_detailBullets_sections1 tbody",
+				el => el.children[el.children.length - 1].children[1].textContent
+			);
+
+			return {
+				title: title.trim(),
+				price: Number(price.match(/\d+[.]\d+/g)[0]),
+				numberOfReviews: Number(numberOfReviews.match(/\d+/g).join("")),
+				averageRating: Number(averageRating.split(" ")[0]),
+				dateFirstListed: dateFirstListed.trim()
+			};
 		}
 
 		for (let i = 0; i < productUrls.length; i++) {
@@ -130,8 +132,10 @@ export const scrapeIt = async () => {
 		console.log(`Scrape completed, ${persisted.length} items saved to db.`);
 
 		await browser.close();
+		process.exit();
 	} catch (err) {
 		console.error(err.toString());
+		process.exit();
 	}
 };
 
